@@ -194,13 +194,35 @@ module Feedjira
           curl.headers["If-Modified-Since"] = options[:if_modified_since].httpdate if options.has_key?(:if_modified_since)
           curl.headers["If-None-Match"]     = options[:if_none_match] if options.has_key?(:if_none_match)
 
-          curl.on_success do |c|
-            responses[url] = decode_content(c)
+          curl.on_success do |c| # Response code 20X
+            xml = decode_content(c)
+            responses[url] = xml
+            options[:on_success].call(url, xml) if options.has_key?(:on_success)
           end
 
           curl.on_complete do |c, err|
             responses[url] = c.response_code unless responses.has_key?(url)
           end
+
+          curl.on_redirect do |c, err| # Response code 30X
+            if c.response_code == 304 # it's not modified. this isn't an error condition
+              options[:on_success].call(url, nil) if options.has_key?(:on_success)
+            else
+              responses[url] = c.response_code
+              call_on_failure(c, err, options[:on_failure])
+            end
+          end
+
+          curl.on_missing do |c, err| # Response code 40X
+            responses[url] = c.response_code
+            call_on_failure(c, err, options[:on_failure])
+          end
+
+          curl.on_failure do |c, err| # Response code 50X
+            responses[url] = c.response_code
+            call_on_failure(c, err, options[:on_failure])
+          end
+
         end
         multi.add(easy)
       end
@@ -308,7 +330,7 @@ module Feedjira
         curl.headers["If-Modified-Since"] = options[:if_modified_since].httpdate if options.has_key?(:if_modified_since)
         curl.headers["If-None-Match"]     = options[:if_none_match] if options.has_key?(:if_none_match)
 
-        curl.on_success do |c|
+        curl.on_success do |c| # Response code 20X
           xml = decode_content(c)
           klass = determine_feed_parser_for_xml(xml)
 
@@ -329,27 +351,26 @@ module Feedjira
           end
         end
 
-        #
-        # trigger on_failure for 404s
-        #
         curl.on_complete do |c|
           add_url_to_multi(multi, url_queue.shift, url_queue, responses, options) unless url_queue.empty?
           responses[url] = c.response_code unless responses.has_key?(url)
         end
 
-        curl.on_redirect do |c|
+        curl.on_redirect do |c, err| # Response code 30X
           if c.response_code == 304 # it's not modified. this isn't an error condition
             options[:on_success].call(url, nil) if options.has_key?(:on_success)
+          else
+            responses[url] = c.response_code
+            call_on_failure(c, err, options[:on_failure])
           end
         end
 
-        curl.on_missing do |c|
-          if c.response_code == 404 && options.has_key?(:on_failure)
-            call_on_failure(c, 'Server returned a 404', options[:on_failure])
-          end
+        curl.on_missing do |c, err| # Response code 40X
+          responses[url] = c.response_code
+          call_on_failure(c, err, options[:on_failure])
         end
 
-        curl.on_failure do |c, err|
+        curl.on_failure do |c, err| # Response code 50X
           responses[url] = c.response_code
           call_on_failure(c, err, options[:on_failure])
         end
@@ -378,7 +399,7 @@ module Feedjira
         curl.headers["If-Modified-Since"] = options[:if_modified_since] if options[:if_modified_since] && (!feed.last_modified || (Time.parse(options[:if_modified_since].to_s) > feed.last_modified))
         curl.headers["If-None-Match"]     = feed.etag if feed.etag
 
-        curl.on_success do |c|
+        curl.on_success do |c| # Response code 20X
           begin
             updated_feed = Feed.parse c.body_str, &on_parser_failure(feed.feed_url)
 
@@ -393,13 +414,13 @@ module Feedjira
           end
         end
 
-        curl.on_failure do |c, err| # response code 50X
-          responses[feed.feed_url] = c.response_code
-          call_on_failure(c, 'Server returned a 404', options[:on_failure])
+        curl.on_complete do |c|          
+          add_feed_to_multi(multi, feed_queue.shift, feed_queue, responses, options) unless feed_queue.empty?
+          responses[feed.feed_url] = feed unless responses.has_key?(feed.feed_url)
         end
 
-        curl.on_redirect do |c, err| # response code 30X
-          if c.response_code == 304
+        curl.on_redirect do |c, err| # Response code 30X
+          if c.response_code == 304 # it's not modified. this isn't an error condition
             options[:on_success].call(feed) if options.has_key?(:on_success)
           else
             responses[feed.feed_url] = c.response_code
@@ -407,10 +428,16 @@ module Feedjira
           end
         end
 
-        curl.on_complete do |c|
-          add_feed_to_multi(multi, feed_queue.shift, feed_queue, responses, options) unless feed_queue.empty?
-          responses[feed.feed_url] = feed unless responses.has_key?(feed.feed_url)
+        curl.on_missing do |c, err|  # Response code 40X
+          responses[feed.feed_url] = c.response_code          
+          call_on_failure(c, err, options[:on_failure])
         end
+
+        curl.on_failure do |c, err| # Response code 50X          
+          responses[feed.feed_url] = c.response_code
+          call_on_failure(c, err, options[:on_failure])
+        end
+
       end
       multi.add(easy)
     end
