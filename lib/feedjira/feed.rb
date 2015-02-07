@@ -205,10 +205,11 @@ module Feedjira
           end
 
           curl.on_redirect do |c, err| # Response code 30X
+            responses[url] = c.response_code
+
             if c.response_code == 304 # it's not modified. this isn't an error condition
-              options[:on_success].call(url, nil) if options.has_key?(:on_success)
-            else
-              responses[url] = c.response_code
+              options[:on_success].call(url, 304) if options.has_key?(:on_success)
+            else              
               call_on_failure(c, err, options[:on_failure])
             end
           end
@@ -357,10 +358,11 @@ module Feedjira
         end
 
         curl.on_redirect do |c, err| # Response code 30X
+          responses[url] = c.response_code
+
           if c.response_code == 304 # it's not modified. this isn't an error condition
-            options[:on_success].call(url, nil) if options.has_key?(:on_success)
-          else
-            responses[url] = c.response_code
+            options[:on_success].call(url, 304) if options.has_key?(:on_success)
+          else            
             call_on_failure(c, err, options[:on_failure])
           end
         end
@@ -408,7 +410,7 @@ module Feedjira
             updated_feed.last_modified = last_modified_from_header(c.header_str)
             feed.update_from_feed(updated_feed)
             responses[feed.feed_url] = feed
-            options[:on_success].call(feed) if options.has_key?(:on_success)
+            options[:on_success].call(feed.feed_url, feed) if options.has_key?(:on_success)
           rescue Exception => e
             call_on_failure(c, e, options[:on_failure])
           end
@@ -420,10 +422,11 @@ module Feedjira
         end
 
         curl.on_redirect do |c, err| # Response code 30X
+          responses[feed.feed_url] = c.response_code
+
           if c.response_code == 304 # it's not modified. this isn't an error condition
-            options[:on_success].call(feed) if options.has_key?(:on_success)
-          else
-            responses[feed.feed_url] = c.response_code
+            options[:on_success].call(feed.feed_url, 304) if options.has_key?(:on_success)
+          else            
             call_on_failure(c, err, options[:on_failure])
           end
         end
