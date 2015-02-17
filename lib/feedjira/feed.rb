@@ -61,14 +61,15 @@ module Feedjira
     # === Returns
     # A array of class names.
     def self.feed_classes
-      @feed_classes ||= [
-        Feedjira::Parser::RSSFeedBurner,
-        Feedjira::Parser::GoogleDocsAtom,
-        Feedjira::Parser::AtomFeedBurner,
-        Feedjira::Parser::Atom,
-        Feedjira::Parser::ITunesRSS,
-        Feedjira::Parser::RSS
-      ]
+      #@feed_classes ||= [
+      #  Feedjira::Parser::RSSFeedBurner,
+      #  Feedjira::Parser::GoogleDocsAtom,
+      #  Feedjira::Parser::AtomFeedBurner,
+      #  Feedjira::Parser::Atom,
+      #  Feedjira::Parser::ITunesRSS,
+      #  Feedjira::Parser::RSS
+      #]
+      @feed_classes ||= [] # Only allow feed_classes specified in project code
     end
 
     # Makes all registered feeds types look for the passed in element to parse.
